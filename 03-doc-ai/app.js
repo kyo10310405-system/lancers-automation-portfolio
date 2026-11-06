@@ -12,7 +12,42 @@ const fixtures=[
 ];
 let docs=D.store(KEY,fixtures),selected=docs[0]?.id||null,lastResult=null,apiAvailable=false;
 function persist(){D.setStore(KEY,docs)}
-function extractRuleBased(raw){const text=String(raw||'').trim();const lines=text.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);const tasks=[],decisions=[],risks=[],body=[];let section='';for(const line of lines){if(/^(?:【|#+\s*)?(決定事項|決定|合意事項)/.test(line)){section='decisions';continue}if(/^(?:【|#+\s*)?(ToDo|TODO|アクション|次回まで|担当タスク)/i.test(line)){section='tasks';continue}if(/^(?:【|#+\s*)?(懸念点|課題|リスク|注意事項)/.test(line)){section='risks';continue}if(/^(?:【|#+\s*)?(議題|背景|目的|概要|現状|提案内容|議論|報告|集計仕様|テーマ)/.test(line)){section='body';body.push(line);continue}const v=line.replace(/^[\-*・●]\s*/,'');if(!v)continue;if(section==='decisions')decisions.push(v);else if(section==='tasks')tasks.push(v);else if(section==='risks')risks.push(v);else body.push(v)}const rawSummary=body.slice(0,3).join(' ').slice(0,240)||lines.slice(0,3).join(' ').slice(0,240)||'要約できる本文がありません。';return{summary:rawSummary,decisions:decisions.slice(0,10),actions:tasks.slice(0,10),risks:risks.slice(0,10),mode:'rule'}}
+function extractRuleBased(raw){
+ const text=String(raw||'').trim();
+ const lines=text.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
+ const tasks=[],decisions=[],risks=[],body=[];
+ let section='';
+ const group={
+  '決定事項':'decisions','決定':'decisions','合意事項':'decisions',
+  'ToDo':'tasks','TODO':'tasks','アクション':'tasks','次回まで':'tasks','担当タスク':'tasks',
+  '懸念点':'risks','課題':'risks','リスク':'risks','注意事項':'risks',
+  '議題':'body','背景':'body','目的':'body','概要':'body','現状':'body',
+  '提案内容':'body','議論':'body','報告':'body','集計仕様':'body','テーマ':'body'
+ };
+ const heading=/^(?:#{1,6}\s*)?(?:【\s*)?(決定事項|合意事項|決定|ToDo|TODO|アクション|次回まで|担当タスク|懸念点|課題|リスク|注意事項|議題|背景|目的|概要|現状|提案内容|議論|報告|集計仕様|テーマ)(?:\s*】)?\s*(?:(?:[：:]\s*)(.*))?$/i;
+ for(const line of lines){
+  const bare=line.replace(/^[-*・●]\s*/, '').trim();
+  const match=bare.match(heading);
+  if(match){
+   section=group[match[1]]||group[Object.keys(group).find(k=>k.toLowerCase()===match[1].toLowerCase())]||'body';
+   const remainder=(match[2]||'').trim();
+   if(remainder){
+    if(section==='decisions')decisions.push(remainder);
+    else if(section==='tasks')tasks.push(remainder);
+    else if(section==='risks')risks.push(remainder);
+    else body.push(`${match[1]}：${remainder}`);
+   }
+   continue;
+  }
+  if(!bare)continue;
+  if(section==='decisions')decisions.push(bare);
+  else if(section==='tasks')tasks.push(bare);
+  else if(section==='risks')risks.push(bare);
+  else body.push(bare);
+ }
+ const rawSummary=body.slice(0,3).join(' ').slice(0,240)||lines.slice(0,3).join(' ').slice(0,240)||'要約できる本文がありません。';
+ return{summary:rawSummary,decisions:decisions.slice(0,10),actions:tasks.slice(0,10),risks:risks.slice(0,10),mode:'rule'};
+}
 function renderDocs(){const q=$('#docSearch').value.trim().toLowerCase(),f=$('#docFilter').value,matched=docs.filter(x=>(!f||x.type===f)&&(!q||(x.title+' '+x.content+' '+x.owner).toLowerCase().includes(q)));$('#docList').innerHTML=matched.map(x=>`<button type="button" data-id="${D.esc(x.id)}" class="doc-item ${x.id===selected?'active':''}"><h4>${D.esc(x.title)}</h4><p>${D.esc(x.date)}　·　${D.esc(x.type)}　·　${D.esc(x.owner)}</p></button>`).join('')||'<div class="empty">該当する文書がありません</div>';$('#docCount').textContent=`${matched.length} 件表示 / 全 ${docs.length} 件`;$('#sDocs').textContent=docs.length+' 件';$('#sMeetings').textContent=docs.filter(x=>x.type==='会議記録').length+' 件'}
 function chosen(){return docs.find(x=>x.id===selected)}
 function selectDoc(id){selected=id;lastResult=null;renderDocs();const x=chosen();$('#selectedTitle').textContent=x?.title||'文書がありません';$('#selectedMeta').textContent=x?`${x.date} · ${x.owner}`:'';$('#typeBadge').textContent=x?.type||'—';$('#sourceContent').textContent=x?.content||'—';$('#analysisResult').innerHTML='<div class="hint">「選択文書を分析」を押すと結果が表示されます。</div>';$('#sTasks').textContent='—';$('#sDecisions').textContent='—';$('#saveSummary').disabled=true;$('#deleteDoc').disabled=!x;if(x)doAnalysis(false)}

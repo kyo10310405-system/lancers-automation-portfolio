@@ -59,7 +59,7 @@ function runAutomation() {
       const prev = sums.get(ownerRaw) || {count:0,amount:0};
       prev.count++; prev.amount+=amount; sums.set(ownerRaw,prev);
     }
-    const output = [...sums].map(([owner,v]) => [owner,v.count,v.amount]);
+    const output = [...sums].map(([owner,v]) => [safeSheetText_(owner),v.count,v.amount]);
     output.sort((a,b)=>b[2]-a[2]);
     const report = ss.getSheetByName(FLOWPILOT.REPORT_SHEET) || ss.insertSheet(FLOWPILOT.REPORT_SHEET);
     report.clearContents();
@@ -87,6 +87,12 @@ function normalizeDate_(raw) {
   const date=new Date(y,mon-1,d);
   if (date.getFullYear()!==y || date.getMonth()!==mon-1 || date.getDate()!==d) return null;
   return String(y)+'-'+String(mon).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+}
+
+/** Mitigate spreadsheet formula injection when writing labels from user-provided CSV. */
+function safeSheetText_(value) {
+ const str=String(value??'');
+ return /^[\s\u0000-\u001f]*[=+\-@]/.test(str)?"'"+str:str;
 }
 
 function maybeNotify_(rows, count, amount, errorCount) {
